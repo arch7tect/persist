@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -29,7 +28,7 @@ public class PageFileTest {
                     CompletableFuture<ByteBuffer> future = pageFile.writePage(i, buf);
                     allWrites.add(future);
                 }
-                CompletableFuture.allOf(allWrites.toArray(new CompletableFuture[allWrites.size()])).get();
+                CompletableFuture.allOf(allWrites.toArray(new CompletableFuture[0])).get();
                 List<CompletableFuture<ByteBuffer>> allReads = new ArrayList<>();
                 for (long i = 0; i < SIZE; ++i) {
                     byte[] magic = MessageFormat.format("Page {0}", i).getBytes();
@@ -37,12 +36,12 @@ public class PageFileTest {
                         Assert.assertEquals(pageFile.getPageSize(), byteBuffer.remaining());
                         byte[] real = new byte[magic.length];
                         byteBuffer.get(real);
-                        Assert.assertTrue(Arrays.equals(magic, real));
+                        Assert.assertArrayEquals(magic, real);
                         return byteBuffer;
                     });
                     allReads.add(future);
                 }
-                CompletableFuture.allOf(allReads.toArray(new CompletableFuture[allReads.size()])).get();
+                CompletableFuture.allOf(allReads.toArray(new CompletableFuture[0])).get();
             }
         }
         finally {
