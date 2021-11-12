@@ -1,6 +1,5 @@
 package ru.neoflex.persist;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousFileChannel;
@@ -12,19 +11,24 @@ import java.util.concurrent.CompletableFuture;
 
 import static java.nio.file.StandardOpenOption.*;
 
-public class PageFile implements Closeable {
+public class PageFile implements PageManager {
     public static final int DEFAULT_PAGE_SIZE = 1024 * 128;
 
-    Path path;
-    AsynchronousFileChannel channel;
+    private int pageSize;
+    private AsynchronousFileChannel channel;
 
     public PageFile(Path path) throws IOException {
-        this.path = path;
+        this(path, DEFAULT_PAGE_SIZE);
+    }
+
+    public PageFile(Path path, int pageSize) throws IOException {
+        this.pageSize = pageSize;
         channel = AsynchronousFileChannel.open(path, READ, WRITE, CREATE);
     }
 
+    @Override
     public int getPageSize() {
-        return DEFAULT_PAGE_SIZE;
+        return pageSize;
     }
 
     public ByteBuffer allocatePage() {
@@ -35,9 +39,10 @@ public class PageFile implements Closeable {
         return buf;
     }
 
+    @Override
     public CompletableFuture<ByteBuffer> readPage(long i) {
         ByteBuffer page = allocatePage();
-        return read(i*getPageSize(), page, true).thenApply(count -> (ByteBuffer) page.flip());
+        return read(i * getPageSize(), page, true).thenApply(count -> page.flip());
     }
 
     public CompletableFuture<Integer> read(long position, ByteBuffer page, boolean readAll) {
@@ -45,20 +50,17 @@ public class PageFile implements Closeable {
         int remaining = page.remaining();
         if (remaining == 0) {
             promise.complete(0);
-        }
-        else {
+        } else {
             channel.read(page, position, null, new CompletionHandler<Integer, Void>() {
                 @Override
                 public void completed(Integer result, Void attachment) {
                     if (result <= 0) {
-                        promise.completeExceptionally(new IllegalArgumentException(MessageFormat.format("Illegal file position {0}", position)));
-                    }
-                    else if ((result < remaining) && readAll) {
-                        read(position + result, page, readAll).thenAccept(rest -> {
-                            promise.complete(result + rest);
-                        });
-                    }
-                    else {
+                        promise.completeExceptionally(new IllegalArgumentException(
+                                MessageFormat.format("Illegal file position {0}", position)));
+                    } else if ((result < remaining) && readAll) {
+                        read(position + result, page, readAll).thenAccept(
+                                rest -> promise.complete(result + rest));
+                    } else {
                         promise.complete(result);
                     }
                 }
@@ -72,8 +74,9 @@ public class PageFile implements Closeable {
         return promise;
     }
 
+    @Override
     public CompletableFuture<ByteBuffer> writePage(long i, ByteBuffer page) {
-        return write(i*getPageSize(), page, true).thenApply(count -> page);
+        return write(i * getPageSize(), page, true).thenApply(count -> page);
     }
 
     public CompletableFuture<Integer> write(long position, ByteBuffer page, boolean writeFull) {
@@ -81,8 +84,7 @@ public class PageFile implements Closeable {
         CompletableFuture<Integer> promise = new CompletableFuture<>();
         if (remaining == 0) {
             promise.complete(0);
-        }
-        else {
+        } else {
             channel.write(page, position, null, new CompletionHandler<Integer, Void>() {
                 @Override
                 public void completed(Integer result, Void attachment) {
@@ -90,14 +92,12 @@ public class PageFile implements Closeable {
                         write(position + result, page, writeFull).handle((rest, throwable) -> {
                             if (rest != null) {
                                 promise.complete(result + rest);
-                            }
-                            else {
+                            } else {
                                 promise.completeExceptionally(throwable);
                             }
                             return null;
                         });
-                    }
-                    else {
+                    } else {
                         promise.complete(result);
                     }
 

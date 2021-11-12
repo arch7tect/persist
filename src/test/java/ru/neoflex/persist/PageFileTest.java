@@ -20,19 +20,20 @@ public class PageFileTest {
         final long SIZE = 500;
         try {
             try (PageFile pageFile = new PageFile(path)) {
+                CachedPageManager cache = new CachedPageManager(pageFile, 10);
                 List<CompletableFuture<ByteBuffer>> allWrites = new ArrayList<>();
                 for (long i = 0; i < SIZE; ++i) {
                     ByteBuffer buf = pageFile.allocatePage();
                     buf.put(MessageFormat.format("Page {0}", i).getBytes());
                     buf.position(0);
-                    CompletableFuture<ByteBuffer> future = pageFile.writePage(i, buf);
+                    CompletableFuture<ByteBuffer> future = cache.writePage(i, buf);
                     allWrites.add(future);
                 }
                 CompletableFuture.allOf(allWrites.toArray(new CompletableFuture[0])).get();
                 List<CompletableFuture<ByteBuffer>> allReads = new ArrayList<>();
                 for (long i = 0; i < SIZE; ++i) {
                     byte[] magic = MessageFormat.format("Page {0}", i).getBytes();
-                    CompletableFuture<ByteBuffer> future = pageFile.readPage(i).thenApply(byteBuffer -> {
+                    CompletableFuture<ByteBuffer> future = cache.readPage(i).thenApply(byteBuffer -> {
                         Assert.assertEquals(pageFile.getPageSize(), byteBuffer.remaining());
                         byte[] real = new byte[magic.length];
                         byteBuffer.get(real);
