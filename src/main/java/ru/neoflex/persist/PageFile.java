@@ -12,18 +12,16 @@ import java.util.concurrent.CompletableFuture;
 import static java.nio.file.StandardOpenOption.*;
 
 public class PageFile implements PageManager {
-    public static final int DEFAULT_PAGE_SIZE = 1024 * 128;
-
+    private long pageCount;
     private int pageSize;
     private AsynchronousFileChannel channel;
-
-    public PageFile(Path path) throws IOException {
-        this(path, DEFAULT_PAGE_SIZE);
-    }
 
     public PageFile(Path path, int pageSize) throws IOException {
         this.pageSize = pageSize;
         channel = AsynchronousFileChannel.open(path, READ, WRITE, CREATE);
+        long size = channel.size();
+        pageCount = size / pageSize;
+        if (size % pageSize != 0) ++pageCount;
     }
 
     @Override
@@ -42,7 +40,12 @@ public class PageFile implements PageManager {
     @Override
     public CompletableFuture<ByteBuffer> readPage(long i) {
         ByteBuffer page = allocatePage();
-        return read(i * getPageSize(), page, true).thenApply(count -> page.flip());
+        if (i < pageCount) {
+            return read(i * getPageSize(), page, true).thenApply(count -> page.rewind());
+        }
+        CompletableFuture<ByteBuffer> future = new CompletableFuture<>();
+        future.complete(page);
+        return future;
     }
 
     public CompletableFuture<Integer> read(long position, ByteBuffer page, boolean readAll) {
@@ -76,10 +79,13 @@ public class PageFile implements PageManager {
 
     @Override
     public CompletableFuture<ByteBuffer> writePage(long i, ByteBuffer page) {
-        return write(i * getPageSize(), page, true).thenApply(count -> page);
+        if (i >= pageCount) {
+            pageCount = i + 1;
+        }
+        return write(i * getPageSize(), page.rewind()).thenApply(count -> page.rewind());
     }
 
-    public CompletableFuture<Integer> write(long position, ByteBuffer page, boolean writeFull) {
+    public CompletableFuture<Integer> write(long position, ByteBuffer page) {
         long remaining = page.remaining();
         CompletableFuture<Integer> promise = new CompletableFuture<>();
         if (remaining == 0) {
@@ -88,8 +94,8 @@ public class PageFile implements PageManager {
             channel.write(page, position, null, new CompletionHandler<Integer, Void>() {
                 @Override
                 public void completed(Integer result, Void attachment) {
-                    if ((result < remaining) && writeFull) {
-                        write(position + result, page, writeFull).handle((rest, throwable) -> {
+                    if (result < remaining) {
+                        write(position + result, page).handle((rest, throwable) -> {
                             if (rest != null) {
                                 promise.complete(result + rest);
                             } else {

@@ -19,28 +19,32 @@ public class PageFileTest {
         Path path = Files.createTempFile("test_", "");
         final long SIZE = 500;
         try {
-            try (PageFile pageFile = new PageFile(path)) {
-                CachedPageManager cache = new CachedPageManager(pageFile, 10);
+            try (FileSystemManager fs = new FileSystemManager(path, 10)) {
                 List<CompletableFuture<ByteBuffer>> allWrites = new ArrayList<>();
                 for (long i = 0; i < SIZE; ++i) {
-                    ByteBuffer buf = pageFile.allocatePage();
-                    buf.put(MessageFormat.format("Page {0}", i).getBytes());
-                    buf.position(0);
-                    CompletableFuture<ByteBuffer> future = cache.writePage(i, buf);
-                    allWrites.add(future);
+                    byte[] content = MessageFormat.format("Page {0}", i).getBytes();
+                    try (Transaction tx = fs.startTransaction()) {
+                        CompletableFuture<ByteBuffer> future = tx.getPageForWrite(i).thenApply(buf -> {
+                            buf.put(content);
+                            return buf;
+                        });
+                        allWrites.add(future);
+                    }
                 }
                 CompletableFuture.allOf(allWrites.toArray(new CompletableFuture[0])).get();
                 List<CompletableFuture<ByteBuffer>> allReads = new ArrayList<>();
                 for (long i = 0; i < SIZE; ++i) {
-                    byte[] magic = MessageFormat.format("Page {0}", i).getBytes();
-                    CompletableFuture<ByteBuffer> future = cache.readPage(i).thenApply(byteBuffer -> {
-                        Assert.assertEquals(pageFile.getPageSize(), byteBuffer.remaining());
-                        byte[] real = new byte[magic.length];
-                        byteBuffer.get(real);
-                        Assert.assertArrayEquals(magic, real);
-                        return byteBuffer;
-                    });
-                    allReads.add(future);
+                    try (Transaction tx = fs.startTransaction()) {
+                        byte[] magic = MessageFormat.format("Page {0}", i).getBytes();
+                        CompletableFuture<ByteBuffer> future = tx.getPageForRead(i).thenApply(byteBuffer -> {
+                            Assert.assertEquals(fs.getPageSize(), byteBuffer.remaining());
+                            byte[] real = new byte[magic.length];
+                            byteBuffer.get(real);
+                            Assert.assertArrayEquals(magic, real);
+                            return byteBuffer;
+                        });
+                        allReads.add(future);
+                    }
                 }
                 CompletableFuture.allOf(allReads.toArray(new CompletableFuture[0])).get();
             }
