@@ -17,14 +17,14 @@ public class PageFileTest {
     @Test
     public void emptyTest() throws IOException, ExecutionException, InterruptedException {
         Path path = Files.createTempFile("test_", "");
-        final long SIZE = 500;
+        final long SIZE = 256;
         try {
-            try (FileSystemManager fs = new FileSystemManager(path, 10)) {
+            try (FileSystemManager fs = new FileSystemManager(path, 64000, 64)) {
                 List<CompletableFuture<ByteBuffer>> allWrites = new ArrayList<>();
                 for (long i = 0; i < SIZE; ++i) {
                     byte[] content = MessageFormat.format("Page {0}", i).getBytes();
                     try (Transaction tx = fs.startTransaction()) {
-                        CompletableFuture<ByteBuffer> future = tx.getPageForWrite(i).thenApply(buf -> {
+                        CompletableFuture<ByteBuffer> future = tx.allocateNew().getValue().thenApply(buf -> {
                             buf.put(content);
                             return buf;
                         });

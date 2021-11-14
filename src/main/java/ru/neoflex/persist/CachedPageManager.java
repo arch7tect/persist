@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public class CachedPageManager implements PageManager {
@@ -21,6 +22,13 @@ public class CachedPageManager implements PageManager {
     @Override
     public int getPageSize() {
         return pageManager.getPageSize();
+    }
+
+    @Override
+    public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew() {
+        Map.Entry<Long, CompletableFuture<ByteBuffer>> result = pageManager.allocateNew();
+        cache.put(result.getKey(), result.getValue());
+        return result;
     }
 
     @Override

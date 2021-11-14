@@ -2,12 +2,8 @@ package ru.neoflex.persist;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class SimpleLockManager implements LockManager {
 
@@ -41,8 +37,12 @@ public class SimpleLockManager implements LockManager {
         return lockEntry.page;
     }
 
-    private synchronized LockEntry getLockEntry(long i) {
-        return lockPages.computeIfAbsent(i, index -> new LockEntry(pageManager.readPage(i)));
+    private LockEntry getLockEntry(long i) {
+        return getLockEntry(i, pageManager.readPage(i));
+    }
+
+    private synchronized LockEntry getLockEntry(long i, CompletableFuture<ByteBuffer> page) {
+        return lockPages.computeIfAbsent(i, index -> new LockEntry(page));
     }
 
     private synchronized void beginRead(long i, Transaction tx, LockEntry lockEntry) {
@@ -64,6 +64,15 @@ public class SimpleLockManager implements LockManager {
     }
 
     @Override
+    public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew(Transaction tx) {
+        Map.Entry<Long, CompletableFuture<ByteBuffer>> entry = pageManager.allocateNew();
+        LockEntry lockEntry = getLockEntry(entry.getKey(), entry.getValue());
+        lockEntry.lock.lockWrite();
+        beginWrite(entry.getKey(), tx, lockEntry);
+        return entry;
+    }
+
+    @Override
     public void commit(Transaction tx) {
         endTransaction(tx, true);
     }
@@ -80,6 +89,7 @@ public class SimpleLockManager implements LockManager {
             LockEntry lockEntry = lockPages.get(i);
             if (lockEntry != null) {
                 lockEntry.lock.unlockRead();
+                lockEntry.readers.remove(tx);
             }
         }
         readPages.remove(tx);
@@ -88,8 +98,9 @@ public class SimpleLockManager implements LockManager {
             LockEntry lockEntry = lockPages.get(i);
             if (lockEntry != null) {
                 lockEntry.lock.unlockWrite();
+                lockEntry.writers.remove(tx);
                 if (commit) {
-                    pageManager.writePage(i, lockEntry.page.join());
+                    pageManager.writePage(i, lockEntry.page.join().rewind());
                 }
             }
         }

@@ -2,11 +2,13 @@ package ru.neoflex.persist;
 
 import java.io.Closeable;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public interface LockManager extends Closeable {
     CompletableFuture<ByteBuffer> getPageForRead(Transaction tx, long i);
     CompletableFuture<ByteBuffer> getPageForWrite(Transaction tx, long i);
+    Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew(Transaction tx);
     void commit(Transaction tx);
     void rollback(Transaction tx);
 

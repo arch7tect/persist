@@ -3,6 +3,7 @@ package ru.neoflex.persist;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 public class Transaction implements Closeable {
@@ -18,6 +19,10 @@ public class Transaction implements Closeable {
 
     public CompletableFuture<ByteBuffer> getPageForWrite(long i) {
         return lockManager.getPageForWrite(this, i);
+    }
+
+    public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew() {
+        return lockManager.allocateNew(this);
     }
 
     public void commit() {

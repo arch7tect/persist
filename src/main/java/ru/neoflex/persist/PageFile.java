@@ -6,7 +6,9 @@ import java.nio.channels.AsynchronousFileChannel;
 import java.nio.channels.CompletionHandler;
 import java.nio.file.Path;
 import java.text.MessageFormat;
+import java.util.AbstractMap;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 import static java.nio.file.StandardOpenOption.*;
@@ -29,47 +31,54 @@ public class PageFile implements PageManager {
         return pageSize;
     }
 
+    @Override
+    public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew() {
+        long i = pageCount++;
+        return new AbstractMap.SimpleImmutableEntry<>(i, writePage(i, allocatePage()));
+    }
+
     public ByteBuffer allocatePage() {
         ByteBuffer buf = ByteBuffer.allocate(getPageSize());
         final int offset = buf.arrayOffset();
         Arrays.fill(buf.array(), offset + buf.position(), offset + buf.limit(), (byte) 0);
-        //buf.position(buf.limit());
         return buf;
     }
 
     @Override
     public CompletableFuture<ByteBuffer> readPage(long i) {
         ByteBuffer page = allocatePage();
-        if (i < pageCount) {
-            return read(i * getPageSize(), page, true).thenApply(count -> page.rewind());
-        }
-        CompletableFuture<ByteBuffer> future = new CompletableFuture<>();
-        future.complete(page);
-        return future;
+        return read(i * getPageSize(), page.rewind()).thenApply(p -> p.rewind());
     }
 
-    public CompletableFuture<Integer> read(long position, ByteBuffer page, boolean readAll) {
-        CompletableFuture<Integer> promise = new CompletableFuture<>();
+    public CompletableFuture<ByteBuffer> read(long position, ByteBuffer page) {
+        CompletableFuture<ByteBuffer> promise = new CompletableFuture<>();
         int remaining = page.remaining();
         if (remaining == 0) {
-            promise.complete(0);
+            promise.complete(page);
         } else {
-            channel.read(page, position, null, new CompletionHandler<Integer, Void>() {
+            channel.read(page, position, page, new CompletionHandler<Integer, ByteBuffer>() {
                 @Override
-                public void completed(Integer result, Void attachment) {
+                public void completed(Integer result, ByteBuffer attachment) {
                     if (result <= 0) {
                         promise.completeExceptionally(new IllegalArgumentException(
                                 MessageFormat.format("Illegal file position {0}", position)));
-                    } else if ((result < remaining) && readAll) {
-                        read(position + result, page, readAll).thenAccept(
-                                rest -> promise.complete(result + rest));
+                    }
+                    else if (attachment.remaining() > 0) {
+                        read(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
+                            if (byteBuffer != null) {
+                                promise.complete(byteBuffer);
+                            }
+                            else {
+                                promise.completeExceptionally(throwable);
+                            }
+                        });
                     } else {
-                        promise.complete(result);
+                        promise.complete(attachment);
                     }
                 }
 
                 @Override
-                public void failed(Throwable exc, Void attachment) {
+                public void failed(Throwable exc, ByteBuffer attachment) {
                     promise.completeExceptionally(exc);
                 }
             });
@@ -82,35 +91,33 @@ public class PageFile implements PageManager {
         if (i >= pageCount) {
             pageCount = i + 1;
         }
-        return write(i * getPageSize(), page.rewind()).thenApply(count -> page.rewind());
+        return write(i * getPageSize(), page.rewind()).thenApply(p -> p.rewind());
     }
 
-    public CompletableFuture<Integer> write(long position, ByteBuffer page) {
+    public CompletableFuture<ByteBuffer> write(long position, ByteBuffer page) {
         long remaining = page.remaining();
-        CompletableFuture<Integer> promise = new CompletableFuture<>();
+        CompletableFuture<ByteBuffer> promise = new CompletableFuture<>();
         if (remaining == 0) {
-            promise.complete(0);
+            promise.complete(page);
         } else {
-            channel.write(page, position, null, new CompletionHandler<Integer, Void>() {
+            channel.write(page, position, page, new CompletionHandler<Integer, ByteBuffer>() {
                 @Override
-                public void completed(Integer result, Void attachment) {
-                    if (result < remaining) {
-                        write(position + result, page).handle((rest, throwable) -> {
-                            if (rest != null) {
-                                promise.complete(result + rest);
+                public void completed(Integer result, ByteBuffer attachment) {
+                    if (attachment.remaining() > 0) {
+                        write(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
+                            if (byteBuffer != null) {
+                                promise.complete(byteBuffer);
                             } else {
                                 promise.completeExceptionally(throwable);
                             }
-                            return null;
                         });
                     } else {
-                        promise.complete(result);
+                        promise.complete(attachment);
                     }
-
                 }
 
                 @Override
-                public void failed(Throwable exc, Void attachment) {
+                public void failed(Throwable exc, ByteBuffer attachment) {
                     promise.completeExceptionally(exc);
                 }
             });
