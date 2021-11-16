@@ -3,6 +3,7 @@ package ru.neoflex.persist;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.function.Consumer;
 
 public class FileSystemManager implements Closeable {
     public static final int DEFAULT_PAGE_SIZE = 1024 * 128;
@@ -27,6 +28,12 @@ public class FileSystemManager implements Closeable {
 
     public Transaction startTransaction() {
         return lockManager.startTransaction();
+    }
+
+    public void inTransaction(Consumer<Transaction> code) throws IOException {
+        try (Transaction tx = startTransaction()) {
+            code.accept(tx);
+        }
     }
 
     @Override
