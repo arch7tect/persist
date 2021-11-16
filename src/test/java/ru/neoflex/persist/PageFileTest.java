@@ -25,7 +25,7 @@ public class PageFileTest {
                     byte[] content = MessageFormat.format("Page {0}", i).getBytes();
                     try (Transaction tx = fs.startTransaction()) {
                         CompletableFuture<ByteBuffer> future = tx.allocateNew().getValue().thenApply(buf -> {
-                            buf.put(content);
+                            buf.rewind().put(content);
                             return buf;
                         });
                         allWrites.add(future);
@@ -39,7 +39,7 @@ public class PageFileTest {
                         CompletableFuture<ByteBuffer> future = tx.getPageForRead(i).thenApply(byteBuffer -> {
                             Assert.assertEquals(fs.getPageSize(), byteBuffer.remaining());
                             byte[] real = new byte[magic.length];
-                            byteBuffer.get(real);
+                            byteBuffer.rewind().get(real);
                             Assert.assertArrayEquals(magic, real);
                             return byteBuffer;
                         });

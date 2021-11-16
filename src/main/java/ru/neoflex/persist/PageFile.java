@@ -10,11 +10,12 @@ import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static java.nio.file.StandardOpenOption.*;
 
 public class PageFile implements PageManager {
-    private long pageCount;
+    private AtomicLong pageCount;
     private int pageSize;
     private AsynchronousFileChannel channel;
 
@@ -22,8 +23,8 @@ public class PageFile implements PageManager {
         this.pageSize = pageSize;
         channel = AsynchronousFileChannel.open(path, READ, WRITE, CREATE);
         long size = channel.size();
-        pageCount = size / pageSize;
-        if (size % pageSize != 0) ++pageCount;
+        pageCount = new AtomicLong(size / pageSize);
+        if (size % pageSize != 0) pageCount.incrementAndGet();
     }
 
     @Override
@@ -33,8 +34,11 @@ public class PageFile implements PageManager {
 
     @Override
     public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew() {
-        long i = pageCount++;
-        return new AbstractMap.SimpleImmutableEntry<>(i, writePage(i, allocatePage()));
+        long i = pageCount.getAndIncrement();
+        ByteBuffer page = allocatePage();
+        CompletableFuture<ByteBuffer> f = writePage(i, page)
+                .thenApply(byteBuffer -> readPage(i).join());
+        return new AbstractMap.SimpleImmutableEntry<>(i, f);
     }
 
     public ByteBuffer allocatePage() {
@@ -50,9 +54,10 @@ public class PageFile implements PageManager {
         return read(i * getPageSize(), page.rewind()).thenApply(p -> p.rewind());
     }
 
-    public CompletableFuture<ByteBuffer> read(long position, ByteBuffer page) {
+    private CompletableFuture<ByteBuffer> read(long position, ByteBuffer page) {
         CompletableFuture<ByteBuffer> promise = new CompletableFuture<>();
         int remaining = page.remaining();
+        assert (position + remaining)%getPageSize() == 0;
         if (remaining == 0) {
             promise.complete(page);
         } else {
@@ -64,13 +69,14 @@ public class PageFile implements PageManager {
                                 MessageFormat.format("Illegal file position {0}", position)));
                     }
                     else if (attachment.remaining() > 0) {
-                        read(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
+                        read(position + result, attachment).handle((byteBuffer, throwable) -> {
                             if (byteBuffer != null) {
                                 promise.complete(byteBuffer);
                             }
                             else {
                                 promise.completeExceptionally(throwable);
                             }
+                            return null;
                         });
                     } else {
                         promise.complete(attachment);
@@ -88,14 +94,13 @@ public class PageFile implements PageManager {
 
     @Override
     public CompletableFuture<ByteBuffer> writePage(long i, ByteBuffer page) {
-        if (i >= pageCount) {
-            pageCount = i + 1;
-        }
+        assert i < pageCount.get();
         return write(i * getPageSize(), page.rewind()).thenApply(p -> p.rewind());
     }
 
-    public CompletableFuture<ByteBuffer> write(long position, ByteBuffer page) {
+    private CompletableFuture<ByteBuffer> write(long position, ByteBuffer page) {
         long remaining = page.remaining();
+        assert (position + remaining)%getPageSize() == 0;
         CompletableFuture<ByteBuffer> promise = new CompletableFuture<>();
         if (remaining == 0) {
             promise.complete(page);
@@ -104,12 +109,13 @@ public class PageFile implements PageManager {
                 @Override
                 public void completed(Integer result, ByteBuffer attachment) {
                     if (attachment.remaining() > 0) {
-                        write(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
+                        write(position + result, attachment).handle((byteBuffer, throwable) -> {
                             if (byteBuffer != null) {
                                 promise.complete(byteBuffer);
                             } else {
                                 promise.completeExceptionally(throwable);
                             }
+                            return null;
                         });
                     } else {
                         promise.complete(attachment);
