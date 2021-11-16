@@ -37,7 +37,7 @@ public class PageFile implements PageManager {
         long i = pageCount.getAndIncrement();
         ByteBuffer page = allocatePage();
         CompletableFuture<ByteBuffer> f = writePage(i, page)
-                .thenApply(byteBuffer -> readPage(i).join());
+                .thenCompose(byteBuffer -> readPage(i));
         return new AbstractMap.SimpleImmutableEntry<>(i, f);
     }
 
@@ -50,8 +50,9 @@ public class PageFile implements PageManager {
 
     @Override
     public CompletableFuture<ByteBuffer> readPage(long i) {
+        assert 0 <= i && i < pageCount.get();
         ByteBuffer page = allocatePage();
-        return read(i * getPageSize(), page.rewind()).thenApply(p -> p.rewind());
+        return read(i * getPageSize(), page).thenApply(p -> p.rewind());
     }
 
     private CompletableFuture<ByteBuffer> read(long position, ByteBuffer page) {
@@ -69,14 +70,14 @@ public class PageFile implements PageManager {
                                 MessageFormat.format("Illegal file position {0}", position)));
                     }
                     else if (attachment.remaining() > 0) {
-                        read(position + result, attachment).handle((byteBuffer, throwable) -> {
+                        read(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
                             if (byteBuffer != null) {
                                 promise.complete(byteBuffer);
                             }
                             else {
                                 promise.completeExceptionally(throwable);
                             }
-                            return null;
+//                            return null;
                         });
                     } else {
                         promise.complete(attachment);
@@ -94,7 +95,8 @@ public class PageFile implements PageManager {
 
     @Override
     public CompletableFuture<ByteBuffer> writePage(long i, ByteBuffer page) {
-        assert i < pageCount.get();
+        assert 0 <= i && i < pageCount.get();
+        assert page.remaining() == getPageSize();
         return write(i * getPageSize(), page.rewind()).thenApply(p -> p.rewind());
     }
 
@@ -109,13 +111,13 @@ public class PageFile implements PageManager {
                 @Override
                 public void completed(Integer result, ByteBuffer attachment) {
                     if (attachment.remaining() > 0) {
-                        write(position + result, attachment).handle((byteBuffer, throwable) -> {
+                        write(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
                             if (byteBuffer != null) {
                                 promise.complete(byteBuffer);
                             } else {
                                 promise.completeExceptionally(throwable);
                             }
-                            return null;
+//                            return null;
                         });
                     } else {
                         promise.complete(attachment);

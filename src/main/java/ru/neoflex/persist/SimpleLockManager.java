@@ -10,9 +10,9 @@ public class SimpleLockManager implements LockManager {
     static class LockEntry {
         public Set<Transaction> readers = new HashSet<>();
         public Set<Transaction> writers = new HashSet<>();
-        public CompletableFuture<ByteBuffer> page;
+        public ByteBuffer page;
         public ReadWriteLock lock = new ReadWriteLock();
-        public LockEntry(CompletableFuture<ByteBuffer> page) {
+        public LockEntry(ByteBuffer page) {
             this.page = page;
         }
     }
@@ -27,14 +27,14 @@ public class SimpleLockManager implements LockManager {
     }
 
     @Override
-    public CompletableFuture<ByteBuffer> getPageForRead(Transaction tx, long i) {
+    public ByteBuffer getPageForRead(Transaction tx, long i) {
         LockEntry lockEntry = getLockEntry(i);
-        if (lockEntry.readers.contains(tx) || lockEntry.writers.contains(tx)) {
-            return lockEntry.page;
+        if (!lockEntry.readers.contains(tx) && !lockEntry.writers.contains(tx)) {
+            lockEntry.lock.lockRead();
+            beginRead(i, tx, lockEntry);
         }
-        lockEntry.lock.lockRead();
-        beginRead(i, tx, lockEntry);
-        return lockEntry.page;
+        ByteBuffer buf = lockEntry.page;
+        return ByteBuffer.wrap(buf.array(), buf.arrayOffset(), buf.capacity());
     }
 
     private LockEntry getLockEntry(long i) {
@@ -42,7 +42,7 @@ public class SimpleLockManager implements LockManager {
     }
 
     private synchronized LockEntry getLockEntry(long i, CompletableFuture<ByteBuffer> page) {
-        return lockPages.computeIfAbsent(i, index -> new LockEntry(page));
+        return lockPages.computeIfAbsent(i, index -> new LockEntry(page.join()));
     }
 
     private synchronized void beginRead(long i, Transaction tx, LockEntry lockEntry) {
@@ -56,7 +56,7 @@ public class SimpleLockManager implements LockManager {
     }
 
     @Override
-    public CompletableFuture<ByteBuffer> getPageForWrite(Transaction tx, long i) {
+    public ByteBuffer getPageForWrite(Transaction tx, long i) {
         LockEntry lockEntry = getLockEntry(i);
         lockEntry.lock.lockWrite();
         beginWrite(i, tx, lockEntry);
@@ -64,12 +64,12 @@ public class SimpleLockManager implements LockManager {
     }
 
     @Override
-    public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew(Transaction tx) {
+    public Map.Entry<Long, ByteBuffer> allocateNew(Transaction tx) {
         Map.Entry<Long, CompletableFuture<ByteBuffer>> entry = pageManager.allocateNew();
         LockEntry lockEntry = getLockEntry(entry.getKey(), entry.getValue());
         lockEntry.lock.lockWrite();
         beginWrite(entry.getKey(), tx, lockEntry);
-        return entry;
+        return new AbstractMap.SimpleImmutableEntry<>(entry.getKey(), lockEntry.page);
     }
 
     @Override
@@ -100,7 +100,7 @@ public class SimpleLockManager implements LockManager {
                 lockEntry.lock.unlockWrite();
                 lockEntry.writers.remove(tx);
                 if (commit) {
-                    pageManager.writePage(i, lockEntry.page.join().rewind());
+                    pageManager.writePage(i, lockEntry.page.rewind());
                 }
             }
         }

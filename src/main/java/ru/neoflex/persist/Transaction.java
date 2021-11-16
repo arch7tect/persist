@@ -13,15 +13,15 @@ public class Transaction implements Closeable {
         this.lockManager = lockManager;
     }
 
-    public CompletableFuture<ByteBuffer> getPageForRead(long i) {
+    public ByteBuffer getPageForRead(long i) {
         return lockManager.getPageForRead(this, i);
     }
 
-    public CompletableFuture<ByteBuffer> getPageForWrite(long i) {
+    public ByteBuffer getPageForWrite(long i) {
         return lockManager.getPageForWrite(this, i);
     }
 
-    public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew() {
+    public Map.Entry<Long, ByteBuffer> allocateNew() {
         return lockManager.allocateNew(this);
     }
 
