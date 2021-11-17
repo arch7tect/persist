@@ -38,6 +38,7 @@ public class FileSystemManager implements Closeable {
 
     @Override
     public void close() throws IOException {
+        lockManager.close();
         pageManager.close();
         pageFile.close();
     }

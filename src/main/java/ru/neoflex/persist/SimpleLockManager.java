@@ -110,12 +110,11 @@ public class SimpleLockManager implements LockManager {
             if (lockEntry != null && lockEntry.readers.isEmpty() && lockEntry.writers.isEmpty()) {
                 lockPages.remove(i);
             }
-
         }
     }
 
     @Override
     public void close() throws IOException {
-
+        // discard all txs
     }
 }
