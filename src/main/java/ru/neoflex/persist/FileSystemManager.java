@@ -22,7 +22,7 @@ public class FileSystemManager implements Closeable {
         this(path, DEFAULT_PAGE_SIZE, maxCacheSize);
     }
 
-    public long getPageSize() {
+    public int getPageSize() {
         return pageFile.getPageSize();
     }
 
@@ -30,9 +30,11 @@ public class FileSystemManager implements Closeable {
         return lockManager.startTransaction();
     }
 
-    public void inTransaction(Consumer<Transaction> code) throws IOException {
+    public void inTransaction(Consumer<Transaction> code) {
         try (Transaction tx = startTransaction()) {
             code.accept(tx);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
