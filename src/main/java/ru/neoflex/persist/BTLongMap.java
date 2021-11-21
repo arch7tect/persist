@@ -3,6 +3,7 @@ package ru.neoflex.persist;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class BTLongMap {
     private final FileSystemManager manager;
@@ -19,7 +20,7 @@ public class BTLongMap {
     }
 
     class Page {
-        public long index;
+        long index;
         public long size;
         public List<Entry> entries = new ArrayList<>(maxSize());
         long tail;
@@ -33,6 +34,7 @@ public class BTLongMap {
         }
 
         void read(ByteBuffer buffer) {
+            buffer.rewind();
             size = buffer.getLong();
             int count = buffer.getInt();
             for (int i = 0; i < count; ++i) {
@@ -45,6 +47,7 @@ public class BTLongMap {
         }
 
         void write(ByteBuffer buffer) {
+            buffer.rewind();
             buffer.putLong(size);
             buffer.putInt(entries.size());
             for (Entry entry: entries) {
@@ -52,6 +55,44 @@ public class BTLongMap {
                 buffer.putLong(entry.ptr);
             }
             buffer.putLong(tail);
+        }
+
+        Page put(Transaction tx, long key, long ptr) {
+            if (entries.size() >= maxSize()) {
+                int middle = entries.size() / 2;
+                Entry middleEntry = entries.get(middle);
+                Map.Entry<Long, ByteBuffer> left = tx.allocateNew();
+                Page leftPage = new Page(left.getKey());
+                leftPage.entries.addAll(entries.subList(0, middle + 1));
+                Map.Entry<Long, ByteBuffer> right = tx.allocateNew();
+                Page rightPage = new Page(right.getKey());
+                rightPage.entries.addAll(entries.subList(middle + 1, entries.size()));
+                rightPage.tail = tail;
+                entries.clear();
+                middleEntry.ptr = -left.getKey();
+                entries.add(middleEntry);
+                tail = right.getKey();
+                if (key <= middleEntry.key) {
+                    leftPage.put(tx, key, ptr);
+                }
+                else {
+                    rightPage.put(tx, key, ptr);
+                }
+                write(tx.getPageForWrite(index));
+                tx.setDirty(index);
+                leftPage.write(left.getValue());
+                tx.setDirty(left.getKey());
+                rightPage.write(right.getValue());
+                tx.setDirty(right.getKey());
+            }
+            else {
+                for (Entry entry: entries) {
+                    if (key <= entry.key) {
+                        return this;
+                    }
+                }
+            }
+            return this;
         }
     }
 
@@ -61,8 +102,11 @@ public class BTLongMap {
     }
 
     public void put(long key, long ptr) {
-        manager.inTransaction(transaction -> {
-
+        Page newRoot = manager.inTransaction(transaction -> {
+            ByteBuffer buffer = transaction.getPageForWrite(root);
+            Page page = new Page(root);
+            page.read(buffer);
+            return page.put(transaction, key, ptr);
         });
     }
 }

@@ -29,20 +29,18 @@ public class SimpleLockManager implements LockManager {
     @Override
     public ByteBuffer getPageForRead(Transaction tx, long i) {
         LockEntry lockEntry = getLockEntry(i);
-        if (!lockEntry.readers.contains(tx) && !lockEntry.writers.contains(tx)) {
-            lockEntry.lock.lockRead();
-            beginRead(i, tx, lockEntry);
-        }
+        lockEntry.lock.lockRead();
+        beginRead(i, tx, lockEntry);
         ByteBuffer buf = lockEntry.page;
         return ByteBuffer.wrap(buf.array(), buf.arrayOffset(), buf.capacity());
     }
 
-    private LockEntry getLockEntry(long i) {
+    private synchronized LockEntry getLockEntry(long i) {
         return getLockEntry(i, pageManager.readPage(i));
     }
 
     private synchronized LockEntry getLockEntry(long i, CompletableFuture<ByteBuffer> page) {
-        return lockPages.computeIfAbsent(i, index -> new LockEntry(page.join()));
+        return lockPages.computeIfAbsent(i, index -> new LockEntry(page.join().rewind()));
     }
 
     private synchronized void beginRead(long i, Transaction tx, LockEntry lockEntry) {
@@ -99,8 +97,8 @@ public class SimpleLockManager implements LockManager {
             if (lockEntry != null) {
                 lockEntry.lock.unlockWrite();
                 lockEntry.writers.remove(tx);
-                if (commit) {
-                    pageManager.writePage(i, lockEntry.page.rewind());
+                if (commit && tx.isDirty(i)) {
+                    pageManager.writePage(i, lockEntry.page);
                 }
             }
         }
@@ -115,6 +113,6 @@ public class SimpleLockManager implements LockManager {
 
     @Override
     public void close() throws IOException {
-        // discard all txs
+        // discard all tx`s
     }
 }

@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class FileSystemManager implements Closeable {
     public static final int DEFAULT_PAGE_SIZE = 1024 * 128;
@@ -33,6 +34,14 @@ public class FileSystemManager implements Closeable {
     public void inTransaction(Consumer<Transaction> code) {
         try (Transaction tx = startTransaction()) {
             code.accept(tx);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public<R> R inTransaction(Function<Transaction, R> code) {
+        try (Transaction tx = startTransaction()) {
+            return code.apply(tx);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

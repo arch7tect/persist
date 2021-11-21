@@ -36,8 +36,7 @@ public class PageFile implements PageManager {
     public Map.Entry<Long, CompletableFuture<ByteBuffer>> allocateNew() {
         long i = pageCount.getAndIncrement();
         ByteBuffer page = allocatePage();
-        CompletableFuture<ByteBuffer> f = writePage(i, page)
-                .thenCompose(byteBuffer -> readPage(i));
+        CompletableFuture<ByteBuffer> f = writePage(i, page);
         return new AbstractMap.SimpleImmutableEntry<>(i, f);
     }
 
@@ -96,8 +95,9 @@ public class PageFile implements PageManager {
     @Override
     public CompletableFuture<ByteBuffer> writePage(long i, ByteBuffer page) {
         assert 0 <= i && i < pageCount.get();
+        page.rewind();
         assert page.remaining() == getPageSize();
-        return write(i * getPageSize(), page.rewind()).thenApply(p -> p.rewind());
+        return write(i * getPageSize(), page).thenApply(p -> p.rewind());
     }
 
     private CompletableFuture<ByteBuffer> write(long position, ByteBuffer page) {

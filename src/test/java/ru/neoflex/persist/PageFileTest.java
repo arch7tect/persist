@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.*;
+import java.util.logging.Logger;
 
 public class PageFileTest {
     @Test
@@ -44,39 +45,48 @@ public class PageFileTest {
     }
 
     @Test
-    public void mtTest() throws IOException {
-        final int PAGE_SIZE = 1024*64;
-        final long PAGE_COUNT = 1024;
-        final int CACHE_SIZE = 128;
-        final int THREAD_COUNT = 64;
-        final int TASK_COUNT = 1024/**128*/;
+    public void mtTest() throws IOException, InterruptedException {
+        final int PAGE_SIZE = 16*1024;
+        final long PAGE_COUNT = 2*1024;
+        final int CACHE_SIZE = 1024;
+        final int THREAD_COUNT = 32;
+        final int TASK_COUNT = 1024;
         Path path = Files.createTempFile("test_", "");
         try {
             try (FileSystemManager fs = new FileSystemManager(path, PAGE_SIZE, CACHE_SIZE)) {
                 for (long i = 0; i < PAGE_COUNT; ++i) {
-                    byte[] content = MessageFormat.format("Page {0}", i).getBytes();
                     fs.inTransaction(tx -> {
-                        ByteBuffer buf = tx.allocateNew().getValue();
-                        buf.put(content);
-                    });
+                        tx.allocateNew();
+                     });
                 }
                 ExecutorService executor = Executors.newFixedThreadPool(THREAD_COUNT);
-                Random random = new Random();
                 for (int i = 0; i < TASK_COUNT; ++i) {
-                    long pNo = Math.abs(random.nextLong())%PAGE_COUNT;
-                    byte[] content = MessageFormat.format("Task {0}", i).getBytes();
-                    executor.submit(() -> {
+                   long task = i;
+                   long pNo = i%PAGE_COUNT;
+                   executor.submit(() -> {
                         fs.inTransaction(tx->{
-                            tx.getPageForWrite(pNo).put(content);
+                            ByteBuffer buf = tx.getPageForWrite(pNo);
+                            if (buf.array()[0] != 0) {
+                                byte[] content = new byte[buf.remaining()];
+                                buf.get(content);
+                                Logger.getLogger(this.getClass().getSimpleName()).info(new String(content));
+                                buf.rewind();
+                            }
+                            byte[] content = MessageFormat.format("Task {0}, Page {1}", task, pNo).getBytes();
+                            buf.put(content);
+                            tx.setDirty(pNo);
                         });
                         fs.inTransaction(tx->{
                             ByteBuffer buf = tx.getPageForRead(pNo);
+                            byte[] content = MessageFormat.format("Task {0}, Page {1}", task, pNo).getBytes();
                             byte[] page = new byte[content.length];
                             buf.get(page);
                             Assert.assertArrayEquals(page, content);
                         });
                     });
                 }
+                executor.shutdown();
+                while (!executor.awaitTermination(5, TimeUnit.SECONDS)) {;}
             }
         }
         finally {

@@ -2,6 +2,7 @@ package ru.neoflex.persist;
 
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -10,13 +11,13 @@ import java.util.concurrent.CompletableFuture;
 
 public class CachedPageManager implements PageManager {
     private final PageManager pageManager;
-    private final AsyncLoadingCache<Long, ByteBuffer> cache;
+    private final LoadingCache<Long, CompletableFuture<ByteBuffer>> cache;
 
     public CachedPageManager(PageManager pageManager, int maxCacheSize) {
         this.pageManager = pageManager;
         this.cache = Caffeine.newBuilder()
                 .maximumSize(maxCacheSize)
-                .buildAsync((i, executor) -> CachedPageManager.this.pageManager.readPage(i));
+                .build((i) -> CachedPageManager.this.pageManager.readPage(i));
     }
 
     @Override
