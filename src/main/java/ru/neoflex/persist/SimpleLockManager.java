@@ -44,13 +44,25 @@ public class SimpleLockManager implements LockManager {
     }
 
     private synchronized void beginRead(long i, Transaction tx, LockEntry lockEntry) {
-        readPages.computeIfAbsent(tx, transaction -> new HashSet<>()).add(i);
-        lockEntry.readers.add(tx);
+        if (lockEntry.readers.contains(tx)) {
+            // double read lock
+            lockEntry.lock.unlockRead();
+        }
+        else {
+            readPages.computeIfAbsent(tx, transaction -> new HashSet<>()).add(i);
+            lockEntry.readers.add(tx);
+        }
     }
 
     private synchronized void beginWrite(long i, Transaction tx, LockEntry lockEntry) {
-        writePages.computeIfAbsent(tx, transaction -> new HashSet<>()).add(i);
-        lockEntry.writers.add(tx);
+        if (lockEntry.writers.contains(tx)) {
+            // double write lock
+            lockEntry.lock.unlockWrite();
+        }
+        else {
+            writePages.computeIfAbsent(tx, transaction -> new HashSet<>()).add(i);
+            lockEntry.writers.add(tx);
+        }
     }
 
     @Override

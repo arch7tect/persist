@@ -179,12 +179,15 @@ public class BPTree {
 
         protected void allocateParent(Transaction tx) {
             if (parent == null) {
-                parent = createIndexNode();
                 Map.Entry<Long, ByteBuffer> entry = tx.allocateNew();
-                parent.index = entry.getKey();
-                parent.page = entry.getValue();
-                parent.tail = index;
+                parent = createIndexNode();
+                // swap pages to keep root index constant
+                parent.index = index;
+                parent.page = page;
+                parent.tail = entry.getKey();
                 root = parent;
+                index = entry.getKey();
+                page = entry.getValue();
             }
         }
 
@@ -399,6 +402,11 @@ public class BPTree {
             }
             page.putLong(next);
             while (page.hasRemaining()) page.put((byte)0);
+        }
+
+        protected void allocateParent(Transaction tx) {
+            super.allocateParent(tx);
+            next = index;
         }
 
         @Override

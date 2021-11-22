@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.*;
 import java.util.logging.Logger;
@@ -24,8 +25,10 @@ public class PageFileTest {
                 for (long i = 0; i < SIZE; ++i) {
                     byte[] content = MessageFormat.format("Page {0}", i).getBytes();
                     fs.inTransaction(tx -> {
-                        ByteBuffer buf = tx.allocateNew().getValue();
+                        Map.Entry<Long, ByteBuffer> entry = tx.allocateNew();
+                        ByteBuffer buf = entry.getValue();
                         buf.put(content);
+                        tx.setDirty(entry.getKey());
                     });
                 }
                 for (long i = 0; i < SIZE; ++i) {
