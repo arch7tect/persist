@@ -9,17 +9,23 @@ import java.util.function.Supplier;
 
 public class BPTree {
     int pageSize;
-    int fixedKeySize = -1;
-    int fixedValueSize = -1;
     Supplier<Key> keyFactory;
     Supplier<Value> valueFactory;
     boolean multivalued = false;
     Node root;
 
+    private static int compareByteArrays(byte[] value, byte[] other) {
+        int dl = value.length - other.length;
+        if (dl != 0) return dl < 0 ? -1 : 1;
+        for (int i = 0; i < other.length; ++i) {
+            if (value[i] < other[i]) return -1;
+            if (value[i] > other[i]) return 1;
+        }
+        return 0;
+    }
+
     public static class Builder {
         int pageSize;
-        int fixedKeySize = -1;
-        int fixedValueSize = -1;
         Supplier<Key> keyFactory;
         Supplier<Value> valueFactory;
         boolean multivalued = false;
@@ -31,18 +37,6 @@ public class BPTree {
         public Builder page(int size) {
             assert size >= 0;
             pageSize = size;
-            return this;
-        }
-
-        public Builder fixedKey(int size) {
-            assert size >= 0;
-            fixedKeySize = size;
-            return this;
-        }
-
-        public Builder fixedValue(int size) {
-            assert size >= 0;
-            fixedValueSize = size;
             return this;
         }
 
@@ -67,8 +61,6 @@ public class BPTree {
             assert pageSize > 0;
             BPTree tree = new BPTree();
             tree.pageSize = pageSize;
-            tree.fixedKeySize = fixedKeySize;
-            tree.fixedValueSize = fixedValueSize;
             tree.keyFactory = keyFactory;
             tree.valueFactory = valueFactory;
             tree.multivalued = multivalued;
@@ -98,15 +90,18 @@ public class BPTree {
     public interface Value {
         int size();
         Object get();
-        void read(ByteBuffer buf, int size);
-        void write(ByteBuffer buf, int size);
+        void read(ByteBuffer buf);
+        void write(ByteBuffer buf);
     }
 
     public interface Key extends Value, Comparable<Key> {}
 
     public static class LongKey implements Key {
-        public static final Supplier<LongKey> FACTORY = () -> new LongKey(0);
         private long value;
+
+        public static Supplier<LongKey> factory() {
+            return () -> new LongKey(0);
+        }
 
         public LongKey(long value) {
             this.value = value;
@@ -128,21 +123,109 @@ public class BPTree {
         }
 
         @Override
-        public void read(ByteBuffer buf, int size) {
-            assert size == size();
+        public void read(ByteBuffer buf) {
             value = buf.getLong();
         }
 
         @Override
-        public void write(ByteBuffer buf, int size) {
-            assert size == size();
+        public void write(ByteBuffer buf) {
             buf.putLong(value);
+        }
+    }
+
+    public static class VarBytesKey implements Key {
+        private byte[] value;
+
+        public static Supplier<VarBytesKey> factory() {
+            return VarBytesKey::new;
+        }
+
+        public VarBytesKey(byte[] value) {
+            this.value = value;
+        }
+
+        public VarBytesKey() {
+            this(new byte[0]);
+        }
+
+        @Override
+        public int compareTo(Key o) {
+            byte[] other = (byte[])o.get();
+            return compareByteArrays(value, other);
+        }
+
+        @Override
+        public int size() {
+            return 4 + value.length;
+        }
+
+        @Override
+        public Object get() {
+            return value;
+        }
+
+        @Override
+        public void read(ByteBuffer buf) {
+            int size = buf.getInt();
+            value = new byte[size];
+            if (size > 0) {
+                buf.get(value);
+            }
+        }
+
+        @Override
+        public void write(ByteBuffer buf) {
+            buf.putInt(value.length);
+            if (value.length > 0) {
+                buf.put(value);
+            }
+        }
+    }
+
+    public static class FixedBytesKey implements Key {
+        private final byte[] value;
+
+        public static Supplier<FixedBytesKey> factory(int size) {
+            return () -> new FixedBytesKey(new byte[size]);
+        }
+
+        public FixedBytesKey(byte[] value) {
+            this.value = value;
+        }
+
+        @Override
+        public int compareTo(Key o) {
+            byte[] other = (byte[])o.get();
+            return compareByteArrays(value, other);
+        }
+
+        @Override
+        public int size() {
+            return value.length;
+        }
+
+        @Override
+        public Object get() {
+            return value;
+        }
+
+        @Override
+        public void read(ByteBuffer buf) {
+            buf.get(value);
+        }
+
+        @Override
+        public void write(ByteBuffer buf) {
+            buf.put(value);
         }
     }
 
     public static class EmptyValue implements Value {
         public static final Object EMPTY = new Object();
-        public static final Supplier<EmptyValue> FACTORY = EmptyValue::new;
+
+        public static Supplier<EmptyValue> factory() {
+            return EmptyValue::new;
+        }
 
         @Override
         public int size() {
@@ -155,19 +238,19 @@ public class BPTree {
         }
 
         @Override
-        public void read(ByteBuffer buf, int size) {
-            assert size == 0;
+        public void read(ByteBuffer buf) {
         }
 
         @Override
-        public void write(ByteBuffer buf, int size) {
-            assert size == 0;
+        public void write(ByteBuffer buf) {
         }
     }
 
     abstract class Node {
         public static final int INDEX_PAGE = 1;
         public static final int LEAF_PAGE = 2;
+        public static final int LEAF_INCOMPLETE_PAGE = 4|2;
+        int nodeType;
         long index;
         IndexNode parent;
         ByteBuffer page;
@@ -204,10 +287,16 @@ public class BPTree {
 
     Node createNode(long index, ByteBuffer page) {
         int nodeType = page.getInt();
-        if (nodeType != Node.INDEX_PAGE && nodeType != Node.LEAF_PAGE) {
+        Node node;
+        if (nodeType == Node.INDEX_PAGE) {
+            node = createIndexNode();
+        }
+        else if (nodeType == Node.LEAF_PAGE || nodeType == Node.LEAF_INCOMPLETE_PAGE) {
+            node = createLeafNode();
+        }
+        else {
             throw new RuntimeException(String.format("Page <%d> is not BPTree index", index));
         }
-        Node node = nodeType == Node.INDEX_PAGE ? createIndexNode() : createLeafNode();
         node.index = index;
         node.page = page;
         node.read();
@@ -223,13 +312,7 @@ public class BPTree {
             int total = 4;
             total += 4;
             for (Map.Entry<Key, Long> entry: entries) {
-                if (fixedKeySize < 0) {
-                    total += 4;
-                    total += entry.getKey().size();
-                }
-                else {
-                    total += fixedKeySize;
-                }
+                total += entry.getKey().size();
                 total += 8;
             }
             total += 8;
@@ -239,11 +322,10 @@ public class BPTree {
         @Override
         void read() {
             page.rewind();
-            assert page.getInt() == Node.INDEX_PAGE;
+            nodeType = page.getInt();
             for (int count = page.getInt(); count > 0; --count) {
                 Key key = keyFactory.get();
-                int keySize = fixedKeySize >= 0 ? fixedKeySize : page.getInt();
-                key.read(page, keySize);
+                key.read(page);
                 long value = page.getLong();
                 entries.add(new AbstractMap.SimpleImmutableEntry<>(key, value));
             }
@@ -253,17 +335,10 @@ public class BPTree {
         @Override
         void write() {
             page.rewind();
-            page.putInt(Node.INDEX_PAGE);
+            page.putInt(nodeType);
             page.putInt(entries.size());
             for (Map.Entry<Key, Long> entry: entries) {
-                if (fixedKeySize < 0) {
-                    int keySize = entry.getKey().size();
-                    page.putInt(keySize);
-                    entry.getKey().write(page, keySize);
-                }
-                else {
-                    entry.getKey().write(page, fixedKeySize);
-                }
+                entry.getKey().write(page);
                 page.putLong(entry.getValue());
             }
             page.putLong(tail);
@@ -343,20 +418,8 @@ public class BPTree {
             int total = 4;
             total += 4;
             for (Map.Entry<Key, Value> entry: entries) {
-                if (fixedKeySize < 0) {
-                    total += 4;
-                    total += entry.getKey().size();
-                }
-                else {
-                    total += fixedKeySize;
-                }
-                if (fixedValueSize < 0) {
-                    total += 4;
-                    total += entry.getValue().size();
-                }
-                else {
-                    total += fixedValueSize;
-                }
+                total += entry.getKey().size();
+                total += entry.getValue().size();
             }
             total += 2*8;
             return total;
@@ -365,14 +428,12 @@ public class BPTree {
         @Override
         void read() {
             page.rewind();
-            assert page.getInt() == Node.LEAF_PAGE;
+            nodeType = page.getInt();
             for (int count = page.getInt(); count > 0; --count) {
                 Key key = keyFactory.get();
-                int keySize = fixedKeySize >= 0 ? fixedKeySize : page.getInt();
-                key.read(page, keySize);
+                key.read(page);
                 Value value = valueFactory.get();
-                int valueSize = fixedValueSize >= 0 ? fixedValueSize : page.getInt();
-                value.read(page, valueSize);
+                value.read(page);
                 entries.add(new AbstractMap.SimpleImmutableEntry<>(key, value));
             }
             prev = page.getLong();
@@ -382,25 +443,11 @@ public class BPTree {
         @Override
         void write() {
             page.rewind();
-            page.putInt(Node.LEAF_PAGE);
+            page.putInt(nodeType);
             page.putInt(entries.size());
             for (Map.Entry<Key, Value> entry: entries) {
-                if (fixedKeySize < 0) {
-                    int keySize = entry.getKey().size();
-                    page.putInt(keySize);
-                    entry.getKey().write(page, keySize);
-                }
-                else {
-                    entry.getKey().write(page, fixedKeySize);
-                }
-                if (fixedValueSize < 0) {
-                    int valueSize = entry.getValue().size();
-                    page.putInt(valueSize);
-                    entry.getValue().write(page, valueSize);
-                }
-                else {
-                    entry.getValue().write(page, fixedValueSize);
-                }
+                entry.getKey().write(page);
+                entry.getValue().write(page);
             }
             page.putLong(prev);
             page.putLong(next);
@@ -439,6 +486,17 @@ public class BPTree {
 
         private void split(Transaction tx) {
             allocateParent(tx);
+            LeafNode nextNode = allocateNextLeafNode(tx);
+            int mid = entries.size() / 2;
+            Map.Entry<Key, Value> midEntry = entries.get(mid);
+            nextNode.entries.addAll(entries.subList(mid, entries.size()));
+            entries.subList(mid, entries.size()).clear();
+            nextNode.write();
+            tx.setDirty(nextNode.index);
+            parent.up(tx, midEntry.getKey(), nextNode.index);
+        }
+
+        private LeafNode allocateNextLeafNode(Transaction tx) {
             Map.Entry<Long, ByteBuffer> entry = tx.allocateNew();
             LeafNode nextNode = createLeafNode();
             nextNode.index = entry.getKey();
@@ -447,13 +505,7 @@ public class BPTree {
             nextNode.next = next;
             nextNode.prev = index;
             next = nextNode.index;
-            int mid = entries.size() / 2;
-            Map.Entry<Key, Value> midEntry = entries.get(mid);
-            nextNode.entries.addAll(entries.subList(mid, entries.size()));
-            entries.subList(mid, entries.size()).clear();
-            nextNode.write();
-            tx.setDirty(nextNode.index);
-            parent.up(tx, midEntry.getKey(), nextNode.index);
+            return nextNode;
         }
 
     }
