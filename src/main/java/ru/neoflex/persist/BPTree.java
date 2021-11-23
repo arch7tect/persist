@@ -335,6 +335,7 @@ public class BPTree {
 
     class LeafNode extends Node {
         List<Map.Entry<Key, Value>> entries = new ArrayList<>();
+        long prev;
         long next;
 
         @Override
@@ -357,7 +358,7 @@ public class BPTree {
                     total += fixedValueSize;
                 }
             }
-            total += 8;
+            total += 2*8;
             return total;
         }
 
@@ -374,6 +375,7 @@ public class BPTree {
                 value.read(page, valueSize);
                 entries.add(new AbstractMap.SimpleImmutableEntry<>(key, value));
             }
+            prev = page.getLong();
             next = page.getLong();
         }
 
@@ -400,13 +402,9 @@ public class BPTree {
                     entry.getValue().write(page, fixedValueSize);
                 }
             }
+            page.putLong(prev);
             page.putLong(next);
             while (page.hasRemaining()) page.put((byte)0);
-        }
-
-        protected void allocateParent(Transaction tx) {
-            super.allocateParent(tx);
-            next = index;
         }
 
         @Override
@@ -447,6 +445,7 @@ public class BPTree {
             nextNode.page = entry.getValue();
             nextNode.parent = parent;
             nextNode.next = next;
+            nextNode.prev = index;
             next = nextNode.index;
             int mid = entries.size() / 2;
             Map.Entry<Key, Value> midEntry = entries.get(mid);
