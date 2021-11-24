@@ -8,10 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.Logger;
 
@@ -95,5 +92,16 @@ public class PageFileTest {
         finally {
             Files.deleteIfExists(path);
         }
+    }
+
+    @Test
+    public void testBinarySearch() {
+        List<Long> l = Arrays.asList(10L, 20L, 30L);
+        int i1 = Collections.binarySearch(l, 20L);
+        Assert.assertEquals(1, i1);
+        int i2 = Collections.binarySearch(l, 25L);
+        Assert.assertEquals(-3, i2);
+        int i3 = Collections.binarySearch(l, 35L);
+        Assert.assertEquals(-4, i3);
     }
 }

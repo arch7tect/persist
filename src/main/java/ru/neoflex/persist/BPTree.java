@@ -1,10 +1,7 @@
 package ru.neoflex.persist;
 
 import java.nio.ByteBuffer;
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Supplier;
 
 public class BPTree {
@@ -347,13 +344,17 @@ public class BPTree {
 
         @Override
         public void put(Transaction tx, Key key, Value value) {
-            long child = tail;
-            for (Map.Entry<Key, Long> entry: entries) {
-                if (entry.getKey().compareTo(key) > 0) {
-                    child = entry.getValue();
-                    break;
-                }
-            }
+            int i = Collections.binarySearch(entries, new AbstractMap.SimpleEntry<>(key, null), Map.Entry.comparingByKey());
+            long child = i > 0 ?
+                    (i + 1 >= entries.size() ? tail : entries.get(i + 1).getValue()) :
+                    (-i - 1 >= entries.size() ? tail : entries.get(-i - 1).getValue());
+//            long child = tail;
+//            for (Map.Entry<Key, Long> entry: entries) {
+//                if (entry.getKey().compareTo(key) > 0) {
+//                    child = entry.getValue();
+//                    break;
+//                }
+//            }
             ByteBuffer buffer = tx.getPageForWrite(child);
             Node node = createNode(child, buffer);
             node.parent = this;
