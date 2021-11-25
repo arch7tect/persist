@@ -3,41 +3,41 @@ package ru.neoflex.persist.types;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
 
-public class LongType implements Type {
+public class EmptyType implements Type {
     public static final Type INSTANCE = new LongType();
 
     @Override
     public byte tag() {
-        return 2;
+        return 1;
     }
 
     @Override
     public Value wrap(Object o) {
-        return new LongValue((Long) o);
+        return EmptyValue.INSTANCE;
     }
 
     @Override
     public Object unwrap(Value value) {
-        return ((LongValue)value).value;
+        return EmptyValue.VALUE;
     }
 
     @Override
     public int size(Value value) {
-        return 8;
+        return 0;
     }
 
     @Override
     public void write(ByteBuffer buffer, Value value) {
-        buffer.putLong(((LongValue)value).value);
+
     }
 
     @Override
     public Value read(ByteBuffer buffer) {
-        return new LongValue(buffer.getLong());
+        return EmptyValue.INSTANCE;
     }
 
     @Override
     public Comparator<Value> comparator() {
-        return Comparator.comparingLong(o -> ((LongValue) o).value);
+        return (o1, o2) -> 0;
     }
 }
