@@ -4,40 +4,59 @@ import java.nio.ByteBuffer;
 import java.util.Comparator;
 
 public class EmptyType implements Type {
-    public static final Type INSTANCE = new LongType();
+    public static final Type INSTANCE = new EmptyType();
 
-    @Override
-    public byte tag() {
-        return 1;
+    public static class Super implements SuperType {
+        public static final SuperType INSTANCE = new EmptyType.Super();
+
+        @Override
+        public String getName() {
+            return "empty";
+        }
+
+        @Override
+        public SuperType getSuperType() {
+            return Registry.INSTANCE;
+        }
+
+        @Override
+        public int size(Object value) {
+            return 0;
+        }
+
+        @Override
+        public void write(ByteBuffer buffer, Object value) {
+
+        }
+
+        @Override
+        public Type read(ByteBuffer buffer) {
+            return EmptyType.INSTANCE;
+        }
     }
 
     @Override
-    public Value wrap(Object o) {
-        return EmptyValue.INSTANCE;
+    public SuperType getSuperType() {
+        return Super.INSTANCE;
     }
 
     @Override
-    public Object unwrap(Value value) {
-        return EmptyValue.VALUE;
-    }
-
-    @Override
-    public int size(Value value) {
+    public int size(Object value) {
         return 0;
     }
 
     @Override
-    public void write(ByteBuffer buffer, Value value) {
+    public void write(ByteBuffer buffer, Object value) {
 
     }
 
     @Override
-    public Value read(ByteBuffer buffer) {
-        return EmptyValue.INSTANCE;
+    public Object read(ByteBuffer buffer) {
+        return INSTANCE;
     }
 
     @Override
-    public Comparator<Value> comparator() {
+    public Comparator<Object> comparator() {
         return (o1, o2) -> 0;
     }
 }

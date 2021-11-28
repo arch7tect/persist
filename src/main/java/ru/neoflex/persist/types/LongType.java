@@ -6,38 +6,62 @@ import java.util.Comparator;
 public class LongType implements Type {
     public static final Type INSTANCE = new LongType();
 
-    @Override
-    public byte tag() {
-        return 2;
+    public static class Super implements SuperType {
+        public static final SuperType INSTANCE = new Super();
+
+        @Override
+        public String getName() {
+            return "long";
+        }
+
+        @Override
+        public SuperType getSuperType() {
+            return Registry.INSTANCE;
+        }
+
+        @Override
+        public int size(Object value) {
+            return 0;
+        }
+
+        @Override
+        public void write(ByteBuffer buffer, Object value) {
+
+        }
+
+        @Override
+        public Type read(ByteBuffer buffer) {
+            return LongType.INSTANCE;
+        }
+
+        @Override
+        public Comparator<Object> comparator() {
+            return Comparator.comparing(o -> ((Type)o).getSuperType().getName());
+        }
     }
 
     @Override
-    public Value wrap(Object o) {
-        return new LongValue((Long) o);
+    public SuperType getSuperType() {
+        return Super.INSTANCE;
     }
 
     @Override
-    public Object unwrap(Value value) {
-        return ((LongValue)value).value;
-    }
-
-    @Override
-    public int size(Value value) {
+    public int size(Object value) {
         return 8;
     }
 
     @Override
-    public void write(ByteBuffer buffer, Value value) {
-        buffer.putLong(((LongValue)value).value);
+    public void write(ByteBuffer buffer, Object value) {
+        buffer.putLong((Long) value);
     }
 
     @Override
-    public Value read(ByteBuffer buffer) {
-        return new LongValue(buffer.getLong());
+    public Object read(ByteBuffer buffer) {
+        return buffer.getLong();
     }
 
     @Override
-    public Comparator<Value> comparator() {
-        return Comparator.comparingLong(o -> ((LongValue) o).value);
+    public Comparator<Object> comparator() {
+        return Comparator.comparingLong(value -> (Long)value);
     }
 }
