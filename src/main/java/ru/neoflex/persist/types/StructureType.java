@@ -83,36 +83,47 @@ public class StructureType implements Type {
 
     @Override
     public int size(Object value) {
-        Map.Entry<String, Object> enumValue = (Map.Entry<String, Object>) value;
-        int i = findTypeIndex(enumValue.getKey());
-        return 4 + entries[i].getValue().size(enumValue.getValue());
+        Object[] structValue = (Object[]) value;
+        assert structValue.length == entries.length;
+        int size = 0;
+        for (int i = 0; i < entries.length; ++i) {
+            Map.Entry<String, Type> entry = entries[i];
+            size += entry.getValue().size(structValue[i]);
+        }
+        return size;
     }
 
     @Override
     public void write(ByteBuffer buffer, Object value) {
-        Map.Entry<String, Object> enumValue = (Map.Entry<String, Object>) value;
-        int i = findTypeIndex(enumValue.getKey());
-        buffer.putInt(i);
-        entries[i].getValue().write(buffer, enumValue.getValue());
+        Object[] structValue = (Object[]) value;
+        assert structValue.length == entries.length;
+        for (int i = 0; i < entries.length; ++i) {
+            Map.Entry<String, Type> entry = entries[i];
+            entry.getValue().write(buffer, structValue[i]);
+        }
     }
 
     @Override
     public Object read(ByteBuffer buffer) {
-        int i = buffer.getInt();
-        return new AbstractMap.SimpleEntry<>(entries[i].getKey(), entries[i].getValue().read(buffer));
+        Object[] structValue =  new Object[entries.length];
+        for (int i = 0; i < entries.length; ++i) {
+            Map.Entry<String, Type> entry = entries[i];
+            Object value = entry.getValue().read(buffer);
+            structValue[i] = value;
+        }
+        return structValue;
     }
 
     @Override
     public Comparator<Object> comparator() {
-        return (o1, o2) -> {
-            Map.Entry<String, Object> e1 = (Map.Entry<String, Object>) o1;
-            int i1 = findTypeIndex(e1.getKey());
-            Map.Entry<String, Object> e2 = (Map.Entry<String, Object>) o2;
-            int i2 = findTypeIndex(e2.getKey());
-            if (i1 != i2) {
-                return i1 - 12;
-            }
-            return entries[i1].getValue().comparator().compare(e1.getValue(), e2.getValue());
-        };
+        if (entries.length == 0) {
+            return (o1, o2) -> 0;
+        }
+        Comparator<Object> comparator = Comparator.comparing(o -> ((Object[])o)[0], entries[0].getValue().comparator());
+        for (int i = 1; i < entries.length; ++i) {
+            int index = i;
+            comparator = comparator.thenComparing(o -> ((Object[])o)[index], entries[index].getValue().comparator());
+        }
+        return comparator;
     }
 }
