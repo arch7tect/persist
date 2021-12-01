@@ -1,17 +1,19 @@
 package ru.neoflex.persist.types;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Comparator;
 
-public class LongType implements Type {
-    public static final Type INSTANCE = new LongType();
+public class VarbinaryType implements Type {
+    public static final VarbinaryType INSTANCE = new VarbinaryType();
 
     public static class Super implements SuperType {
         public static final SuperType INSTANCE = new Super();
 
         @Override
         public String getName() {
-            return "long";
+            return "varbinary";
         }
 
         @Override
@@ -26,12 +28,11 @@ public class LongType implements Type {
 
         @Override
         public void write(ByteBuffer buffer, Object value) {
-
         }
 
         @Override
         public Type read(ByteBuffer buffer) {
-            return LongType.INSTANCE;
+            return VarbinaryType.INSTANCE;
         }
     }
 
@@ -42,21 +43,26 @@ public class LongType implements Type {
 
     @Override
     public int size(Object value) {
-        return 8;
+        return 4 + ((byte[])value).length;
     }
 
     @Override
     public void write(ByteBuffer buffer, Object value) {
-        buffer.putLong((Long) value);
+        byte[] nb = (byte[]) value;
+        buffer.putInt(nb.length);
+        buffer.put(nb);
     }
 
     @Override
     public Object read(ByteBuffer buffer) {
-        return buffer.getLong();
+        int len = buffer.getInt();
+        byte[] nb = new byte[len];
+        buffer.get(nb);
+        return nb;
     }
 
     @Override
     public Comparator<Object> comparator() {
-        return Comparator.comparingLong(value -> (Long)value);
+        return (o1, o2) ->  Arrays.compare((byte[]) o1, (byte[]) o2);
     }
 }

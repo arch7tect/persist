@@ -1,7 +1,6 @@
 package ru.neoflex.persist.types;
 
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.Comparator;
 import java.util.Map;
@@ -27,7 +26,7 @@ public class StructureType implements Type {
             StructureType structureType = (StructureType) value;
             int size = 4;
             for (Map.Entry<String, Type> entry: structureType.entries) {
-                size += 4 + entry.getKey().getBytes(StandardCharsets.UTF_8).length;
+                size += new StringType().size(entry.getKey());
                 size += entry.getValue().getSuperType().size(entry.getValue());
             }
             return size;
@@ -38,10 +37,7 @@ public class StructureType implements Type {
             StructureType structureType = (StructureType) value;
             buffer.putInt(structureType.entries.length);
             for (Map.Entry<String, Type> entry: structureType.entries) {
-                String name = entry.getKey();
-                byte[] nb = name.getBytes(StandardCharsets.UTF_8);
-                buffer.putInt(nb.length);
-                buffer.put(nb);
+                new StringType().write(buffer, entry.getKey());
                 entry.getValue().getSuperType().write(buffer, entry.getValue());
             }
         }
@@ -51,10 +47,7 @@ public class StructureType implements Type {
             int size = buffer.getInt();
             AbstractMap.SimpleImmutableEntry[] entries = new AbstractMap.SimpleImmutableEntry[size];
             for (int i = 0; i < size; ++i) {
-                int len = buffer.getInt();
-                byte[] nb = new byte[len];
-                buffer.get(nb);
-                String name = new String(nb, StandardCharsets.UTF_8);
+                String name = (String) new StringType().read(buffer);
                 Type type = Registry.INSTANCE.read(buffer);
                 entries[i] = new AbstractMap.SimpleImmutableEntry<>(name, type);
             }
