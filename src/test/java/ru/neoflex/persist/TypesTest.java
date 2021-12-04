@@ -87,7 +87,7 @@ public class TypesTest {
         Assert.assertEquals(st, st2);
 
         Object[] u0 = st.newInstance();
-        st.setFieldValue(u0, "id", 0);
+        st.setFieldValue(u0, "id", 100);
         st.setFieldValue(u0, "name", "Oleg");
         st.setFieldValue(u0, "sex", EnumType.newInstance("M", EmptyType.INSTANCE));
         st.setFieldValue(u0, "salary", new BigDecimal("12345.67"));
