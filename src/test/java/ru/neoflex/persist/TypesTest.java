@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.AbstractMap;
 
 public class TypesTest {
     @Test
@@ -63,5 +64,37 @@ public class TypesTest {
         bt.write(buffer.rewind(), v0);
         byte[] v2 = (byte[]) bt.read(buffer.rewind());
         Assert.assertArrayEquals(v0, v2);
+    }
+
+    @Test
+    public void complexTypesTest() {
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        StructureType st = new StructureType(
+                new AbstractMap.SimpleEntry<>("id", IntType.INSTANCE),
+                new AbstractMap.SimpleEntry<>("name", StringType.INSTANCE),
+                new AbstractMap.SimpleEntry<>("last_name", StringType.INSTANCE),
+                new AbstractMap.SimpleEntry<>("sex", new EnumType(
+                        new AbstractMap.SimpleEntry<>("M", EmptyType.INSTANCE),
+                        new AbstractMap.SimpleEntry<>("F", EmptyType.INSTANCE)
+                )),
+                new AbstractMap.SimpleEntry<>("salary", DecimalType.INSTANCE),
+                new AbstractMap.SimpleEntry<>("groups", new ArrayType(StringType.INSTANCE))
+        );
+
+        Registry.INSTANCE.write(buffer.rewind(), st);
+        Assert.assertEquals(Registry.INSTANCE.size(st), buffer.position());
+        Type st2 = Registry.INSTANCE.read(buffer.rewind());
+        Assert.assertEquals(st, st2);
+
+        Object[] u0 = st.newInstance();
+        st.setFieldValue(u0, "id", 0);
+        st.setFieldValue(u0, "name", "Oleg");
+        st.setFieldValue(u0, "sex", EnumType.newInstance("M", EmptyType.INSTANCE));
+        st.setFieldValue(u0, "salary", new BigDecimal("12345.67"));
+        st.setFieldValue(u0, "groups", new Object[] {"Users", null, "Admins"});
+        st.write(buffer.rewind(), u0);
+        Assert.assertEquals(st.size(u0), buffer.position());
+        Object[] u1 = st.read(buffer.rewind());
+        Assert.assertArrayEquals(u0, u1);
     }
 }

@@ -44,7 +44,7 @@ public class BigIntType implements Type {
     @Override
     public int size(Object value) {
         BigInteger bi = (BigInteger) value;
-        return bi.bitLength()/8 + 1;
+        return 4 + bi.bitLength()/8 + 1;
     }
 
     @Override
@@ -54,12 +54,17 @@ public class BigIntType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public BigInteger read(ByteBuffer buffer) {
         return new BigInteger((byte[])VarbinaryType.INSTANCE.read(buffer));
     }
 
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparingLong(value -> (Long)value);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof BigIntType;
     }
 }

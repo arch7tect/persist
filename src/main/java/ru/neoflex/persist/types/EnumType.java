@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.Objects;
 
 public class EnumType implements Type {
     Map.Entry<String, Type>[] entries;
@@ -27,7 +28,7 @@ public class EnumType implements Type {
             int size = 4;
             for (Map.Entry<String, Type> entry: enumType.entries) {
                 size += new StringType().size(entry.getKey());
-                size += entry.getValue().getSuperType().size(entry.getValue());
+                size += Registry.INSTANCE.size(entry.getValue());
             }
             return size;
         }
@@ -38,7 +39,7 @@ public class EnumType implements Type {
             buffer.putInt(enumType.entries.length);
             for (Map.Entry<String, Type> entry: enumType.entries) {
                 new StringType().write(buffer, entry.getKey());
-                entry.getValue().getSuperType().write(buffer, entry.getValue());
+                Registry.INSTANCE.write(buffer, entry.getValue());
             }
         }
 
@@ -47,7 +48,7 @@ public class EnumType implements Type {
             int size = buffer.getInt();
             AbstractMap.SimpleImmutableEntry[] entries = new AbstractMap.SimpleImmutableEntry[size];
             for (int i = 0; i < size; ++i) {
-                String name = (String) new StringType().read(buffer);
+                String name = new StringType().read(buffer);
                 Type type = Registry.INSTANCE.read(buffer);
                 entries[i] = new AbstractMap.SimpleImmutableEntry<>(name, type);
             }
@@ -90,7 +91,7 @@ public class EnumType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public Map.Entry<String, Object> read(ByteBuffer buffer) {
         int i = buffer.getInt();
         return new AbstractMap.SimpleEntry<>(entries[i].getKey(), entries[i].getValue().read(buffer));
     }
@@ -107,5 +108,16 @@ public class EnumType implements Type {
             }
             return entries[i1].getValue().comparator().compare(e1.getValue(), e2.getValue());
         };
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof EnumType))
+            return false;
+        return Objects.deepEquals(this.entries, ((EnumType)obj).entries);
+    }
+
+    public static Map.Entry<String, Object> newInstance(String discr, Object value) {
+        return new AbstractMap.SimpleEntry<>(discr, value);
     }
 }

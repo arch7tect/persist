@@ -56,7 +56,7 @@ public class DecimalType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public BigDecimal read(ByteBuffer buffer) {
         int scale = (Integer) IntType.INSTANCE.read(buffer);
         BigInteger bi = (BigInteger) BigIntType.INSTANCE.read(buffer);
         return new BigDecimal(bi, scale);
@@ -65,5 +65,10 @@ public class DecimalType implements Type {
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparingDouble(value -> (Double) value);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof DecimalType;
     }
 }

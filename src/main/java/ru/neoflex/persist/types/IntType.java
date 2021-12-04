@@ -51,12 +51,17 @@ public class IntType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public Integer read(ByteBuffer buffer) {
         return buffer.getInt();
     }
 
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparingInt(value -> (Integer) value);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof IntType;
     }
 }

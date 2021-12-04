@@ -21,7 +21,8 @@ public class Registry implements SuperType {
             new AbstractMap.SimpleImmutableEntry<>(VarbinaryType.Super.INSTANCE.getName(), VarbinaryType.Super.INSTANCE),
             new AbstractMap.SimpleImmutableEntry<>(BinaryType.Super.INSTANCE.getName(), BinaryType.Super.INSTANCE),
             new AbstractMap.SimpleImmutableEntry<>(EnumType.Super.INSTANCE.getName(), EnumType.Super.INSTANCE),
-            new AbstractMap.SimpleImmutableEntry<>(StructureType.Super.INSTANCE.getName(), StructureType.Super.INSTANCE)
+            new AbstractMap.SimpleImmutableEntry<>(StructureType.Super.INSTANCE.getName(), StructureType.Super.INSTANCE),
+            new AbstractMap.SimpleImmutableEntry<>(ArrayType.Super.INSTANCE.getName(), ArrayType.Super.INSTANCE)
     );
 
     @Override
@@ -50,7 +51,7 @@ public class Registry implements SuperType {
 
     @Override
     public Type read(ByteBuffer buffer) {
-        Map.Entry<String, Type> entry = (Map.Entry<String, Type>) TYPES.read(buffer);
-        return entry.getValue();
+        Map.Entry<String, Object> entry = TYPES.read(buffer);
+        return (Type) entry.getValue();
     }
 }

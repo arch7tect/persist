@@ -51,12 +51,17 @@ public class DoubleType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public Double read(ByteBuffer buffer) {
         return buffer.getDouble();
     }
 
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparingDouble(value -> (Double) value);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof DoubleType;
     }
 }

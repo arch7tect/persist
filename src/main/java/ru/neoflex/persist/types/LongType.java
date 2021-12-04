@@ -51,12 +51,17 @@ public class LongType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public Long read(ByteBuffer buffer) {
         return buffer.getLong();
     }
 
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparingLong(value -> (Long)value);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof LongType;
     }
 }

@@ -59,4 +59,9 @@ public class EmptyType implements Type {
     public Comparator<Object> comparator() {
         return (o1, o2) -> 0;
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof EmptyType;
+    }
 }

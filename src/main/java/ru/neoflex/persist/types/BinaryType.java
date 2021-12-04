@@ -3,6 +3,7 @@ package ru.neoflex.persist.types;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Objects;
 
 public class BinaryType implements Type {
     int length;
@@ -60,7 +61,7 @@ public class BinaryType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public byte[] read(ByteBuffer buffer) {
         byte[] nb = new byte[length];
         buffer.get(nb);
         return nb;
@@ -69,5 +70,12 @@ public class BinaryType implements Type {
     @Override
     public Comparator<Object> comparator() {
         return (o1, o2) ->  Arrays.compare((byte[]) o1, (byte[]) o2);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof BinaryType))
+            return false;
+        return this.length == ((BinaryType)obj).length;
     }
 }

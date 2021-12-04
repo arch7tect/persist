@@ -51,12 +51,17 @@ public class ShortType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public Short read(ByteBuffer buffer) {
         return buffer.getShort();
     }
 
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparingInt(value -> (Short) value);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof ShortType;
     }
 }

@@ -1,9 +1,7 @@
 package ru.neoflex.persist.types;
 
 import java.nio.ByteBuffer;
-import java.util.AbstractMap;
-import java.util.Comparator;
-import java.util.Map;
+import java.util.*;
 
 public class StructureType implements Type {
     Map.Entry<String, Type>[] entries;
@@ -26,8 +24,8 @@ public class StructureType implements Type {
             StructureType structureType = (StructureType) value;
             int size = 4;
             for (Map.Entry<String, Type> entry: structureType.entries) {
-                size += new StringType().size(entry.getKey());
-                size += entry.getValue().getSuperType().size(entry.getValue());
+                size += StringType.INSTANCE.size(entry.getKey());
+                size += Registry.INSTANCE.size(entry.getValue());
             }
             return size;
         }
@@ -38,7 +36,7 @@ public class StructureType implements Type {
             buffer.putInt(structureType.entries.length);
             for (Map.Entry<String, Type> entry: structureType.entries) {
                 new StringType().write(buffer, entry.getKey());
-                entry.getValue().getSuperType().write(buffer, entry.getValue());
+                Registry.INSTANCE.write(buffer, entry.getValue());
             }
         }
 
@@ -47,7 +45,7 @@ public class StructureType implements Type {
             int size = buffer.getInt();
             AbstractMap.SimpleImmutableEntry[] entries = new AbstractMap.SimpleImmutableEntry[size];
             for (int i = 0; i < size; ++i) {
-                String name = (String) new StringType().read(buffer);
+                String name = new StringType().read(buffer);
                 Type type = Registry.INSTANCE.read(buffer);
                 entries[i] = new AbstractMap.SimpleImmutableEntry<>(name, type);
             }
@@ -59,14 +57,34 @@ public class StructureType implements Type {
         this.entries = entries;
     }
 
-    private int findTypeIndex(String name) {
+    public int getFieldIndex(String name) {
         for (int i = 0; i < entries.length; ++i) {
             Map.Entry<String, Type> entry = entries[i];
             if (entry.getKey().equals(name)) {
                 return i;
             }
         }
-        throw new IllegalArgumentException(String.format("Field <%s> not found for EnumType", name));
+        throw new IllegalArgumentException(String.format("Field <%s> not found for StructureType", name));
+    }
+
+    public Object getFieldValue(Object o, int i) {
+        return ((Object[])o)[i];
+    }
+
+    public void setFieldValue(Object o, int i, Object v) {
+        ((Object[])o)[i] = v;
+    }
+
+    public void setFieldValue(Object o, String name, Object v) {
+        setFieldValue(o, getFieldIndex(name), v);
+    }
+
+    public Object getFieldValue(Object o, String name) {
+        return getFieldValue(o, getFieldIndex(name));
+    }
+
+    public Object[] newInstance() {
+        return new Object[entries.length];
     }
 
     @Override
@@ -78,10 +96,13 @@ public class StructureType implements Type {
     public int size(Object value) {
         Object[] structValue = (Object[]) value;
         assert structValue.length == entries.length;
-        int size = 0;
+        BitSet nulls = Type.getNulls(structValue);
+        int size = VarbinaryType.INSTANCE.size(nulls.toByteArray());
         for (int i = 0; i < entries.length; ++i) {
-            Map.Entry<String, Type> entry = entries[i];
-            size += entry.getValue().size(structValue[i]);
+            if (!nulls.get(i)) {
+                Map.Entry<String, Type> entry = entries[i];
+                size += entry.getValue().size(structValue[i]);
+            }
         }
         return size;
     }
@@ -90,19 +111,27 @@ public class StructureType implements Type {
     public void write(ByteBuffer buffer, Object value) {
         Object[] structValue = (Object[]) value;
         assert structValue.length == entries.length;
+        BitSet nulls = Type.getNulls(structValue);
+        VarbinaryType.INSTANCE.write(buffer, nulls.toByteArray());
         for (int i = 0; i < entries.length; ++i) {
-            Map.Entry<String, Type> entry = entries[i];
-            entry.getValue().write(buffer, structValue[i]);
+            if (!nulls.get(i)) {
+                Map.Entry<String, Type> entry = entries[i];
+                entry.getValue().write(buffer, structValue[i]);
+            }
         }
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public Object[] read(ByteBuffer buffer) {
+        byte[] nullsBytes = VarbinaryType.INSTANCE.read(buffer);
+        BitSet nulls = BitSet.valueOf(nullsBytes);
         Object[] structValue =  new Object[entries.length];
         for (int i = 0; i < entries.length; ++i) {
-            Map.Entry<String, Type> entry = entries[i];
-            Object value = entry.getValue().read(buffer);
-            structValue[i] = value;
+            if (!nulls.get(i)) {
+                Map.Entry<String, Type> entry = entries[i];
+                Object value = entry.getValue().read(buffer);
+                structValue[i] = value;
+            }
         }
         return structValue;
     }
@@ -118,5 +147,12 @@ public class StructureType implements Type {
             comparator = comparator.thenComparing(o -> ((Object[])o)[index], entries[index].getValue().comparator());
         }
         return comparator;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof StructureType))
+            return false;
+        return Objects.deepEquals(this.entries, ((StructureType)obj).entries);
     }
 }

@@ -65,7 +65,7 @@ public class StringType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public String read(ByteBuffer buffer) {
         int len = buffer.getInt();
         byte[] nb = new byte[len];
         buffer.get(nb);
@@ -75,5 +75,10 @@ public class StringType implements Type {
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparing(Object::toString);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof StringType;
     }
 }

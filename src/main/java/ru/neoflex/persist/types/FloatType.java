@@ -52,12 +52,17 @@ public class FloatType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public Float read(ByteBuffer buffer) {
         return buffer.getFloat();
     }
 
     @Override
     public Comparator<Object> comparator() {
         return Comparator.comparingDouble(value -> (Double) value);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof FloatType;
     }
 }

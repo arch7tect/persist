@@ -54,7 +54,7 @@ public class VarbinaryType implements Type {
     }
 
     @Override
-    public Object read(ByteBuffer buffer) {
+    public byte[] read(ByteBuffer buffer) {
         int len = buffer.getInt();
         byte[] nb = new byte[len];
         buffer.get(nb);
@@ -64,5 +64,10 @@ public class VarbinaryType implements Type {
     @Override
     public Comparator<Object> comparator() {
         return (o1, o2) ->  Arrays.compare((byte[]) o1, (byte[]) o2);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof VarbinaryType;
     }
 }
