@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.util.*;
 
 public class StructureType implements Type {
+    boolean allowNulls;
     Map.Entry<String, Type>[] entries;
 
     public static class Super implements SuperType {
@@ -22,7 +23,7 @@ public class StructureType implements Type {
         @Override
         public int size(Object value) {
             StructureType structureType = (StructureType) value;
-            int size = 4;
+            int size = 1 + 4;
             for (Map.Entry<String, Type> entry: structureType.entries) {
                 size += StringType.INSTANCE.size(entry.getKey());
                 size += Registry.INSTANCE.size(entry.getValue());
@@ -33,6 +34,7 @@ public class StructureType implements Type {
         @Override
         public void write(ByteBuffer buffer, Object value) {
             StructureType structureType = (StructureType) value;
+            buffer.put((byte) (structureType.allowNulls ? 1 : 0));
             buffer.putInt(structureType.entries.length);
             for (Map.Entry<String, Type> entry: structureType.entries) {
                 new StringType().write(buffer, entry.getKey());
@@ -42,6 +44,7 @@ public class StructureType implements Type {
 
         @Override
         public Type read(ByteBuffer buffer) {
+            boolean allowNulls = buffer.get() != 0;
             int size = buffer.getInt();
             AbstractMap.SimpleImmutableEntry[] entries = new AbstractMap.SimpleImmutableEntry[size];
             for (int i = 0; i < size; ++i) {
@@ -49,12 +52,17 @@ public class StructureType implements Type {
                 Type type = Registry.INSTANCE.read(buffer);
                 entries[i] = new AbstractMap.SimpleImmutableEntry<>(name, type);
             }
-            return new StructureType(entries);
+            return new StructureType(allowNulls, entries);
         }
     }
 
-    public StructureType(Map.Entry<String, Type> ...entries) {
+    public StructureType(boolean allowNulls, Map.Entry<String, Type> ...entries) {
+        this.allowNulls = allowNulls;
         this.entries = entries;
+    }
+
+    public StructureType(Map.Entry<String, Type> ...entries) {
+        this(true, entries);
     }
 
     public int getFieldIndex(String name) {
@@ -96,10 +104,14 @@ public class StructureType implements Type {
     public int size(Object value) {
         Object[] structValue = (Object[]) value;
         assert structValue.length == entries.length;
-        BitSet nulls = Type.getNulls(structValue);
-        int size = VarbinaryType.INSTANCE.size(nulls.toByteArray());
+        int size = 0;
+        if (allowNulls) {
+            BitSet nulls = Type.getNulls(structValue);
+            size += VarbinaryType.INSTANCE.size(nulls.toByteArray());
+        }
         for (int i = 0; i < entries.length; ++i) {
-            if (!nulls.get(i)) {
+            if (!allowNulls) Objects.requireNonNull(structValue[i]);
+            if (structValue[i] != null) {
                 Map.Entry<String, Type> entry = entries[i];
                 size += entry.getValue().size(structValue[i]);
             }
@@ -111,10 +123,13 @@ public class StructureType implements Type {
     public void write(ByteBuffer buffer, Object value) {
         Object[] structValue = (Object[]) value;
         assert structValue.length == entries.length;
-        BitSet nulls = Type.getNulls(structValue);
-        VarbinaryType.INSTANCE.write(buffer, nulls.toByteArray());
+        if (allowNulls) {
+            BitSet nulls = Type.getNulls(structValue);
+            VarbinaryType.INSTANCE.write(buffer, nulls.toByteArray());
+        }
         for (int i = 0; i < entries.length; ++i) {
-            if (!nulls.get(i)) {
+            if (!allowNulls) Objects.requireNonNull(structValue[i]);
+            if (structValue[i] != null) {
                 Map.Entry<String, Type> entry = entries[i];
                 entry.getValue().write(buffer, structValue[i]);
             }
@@ -123,8 +138,7 @@ public class StructureType implements Type {
 
     @Override
     public Object[] read(ByteBuffer buffer) {
-        byte[] nullsBytes = VarbinaryType.INSTANCE.read(buffer);
-        BitSet nulls = BitSet.valueOf(nullsBytes);
+        BitSet nulls = allowNulls ? BitSet.valueOf(VarbinaryType.INSTANCE.read(buffer)) : new BitSet();
         Object[] structValue =  new Object[entries.length];
         for (int i = 0; i < entries.length; ++i) {
             if (!nulls.get(i)) {
