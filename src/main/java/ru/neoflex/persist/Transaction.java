@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 
 public class Transaction implements Closeable {
     private final LockManager lockManager;

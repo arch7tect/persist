@@ -31,8 +31,7 @@ public class SimpleLockManager implements LockManager {
         LockEntry lockEntry = getLockEntry(i);
         lockEntry.lock.lockRead();
         beginRead(i, tx, lockEntry);
-        ByteBuffer buf = lockEntry.page;
-        return ByteBuffer.wrap(buf.array(), buf.arrayOffset(), buf.capacity());
+        return ByteBuffer.wrap(lockEntry.page.array(), lockEntry.page.arrayOffset(), lockEntry.page.capacity());
     }
 
     private synchronized LockEntry getLockEntry(long i) {
@@ -40,7 +39,7 @@ public class SimpleLockManager implements LockManager {
     }
 
     private synchronized LockEntry getLockEntry(long i, CompletableFuture<ByteBuffer> page) {
-        return lockPages.computeIfAbsent(i, index -> new LockEntry(page.join().rewind()));
+        return lockPages.computeIfAbsent(i, index -> new LockEntry(page.join()));
     }
 
     private synchronized void beginRead(long i, Transaction tx, LockEntry lockEntry) {

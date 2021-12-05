@@ -50,45 +50,28 @@ public class PageFile implements PageManager {
     @Override
     public CompletableFuture<ByteBuffer> readPage(long i) {
         assert 0 <= i && i < pageCount.get();
-        ByteBuffer page = allocatePage();
-        return read(i * getPageSize(), page).thenApply(p -> p.rewind());
-    }
-
-    private CompletableFuture<ByteBuffer> read(long position, ByteBuffer page) {
         CompletableFuture<ByteBuffer> promise = new CompletableFuture<>();
-        int remaining = page.remaining();
-        assert (position + remaining)%getPageSize() == 0;
-        if (remaining == 0) {
-            promise.complete(page);
-        } else {
-            channel.read(page, position, page, new CompletionHandler<Integer, ByteBuffer>() {
-                @Override
-                public void completed(Integer result, ByteBuffer attachment) {
-                    if (result <= 0) {
-                        promise.completeExceptionally(new IllegalArgumentException(
-                                MessageFormat.format("Illegal file position {0}", position)));
-                    }
-                    else if (attachment.remaining() > 0) {
-                        read(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
-                            if (byteBuffer != null) {
-                                promise.complete(byteBuffer);
-                            }
-                            else {
-                                promise.completeExceptionally(throwable);
-                            }
-//                            return null;
-                        });
-                    } else {
-                        promise.complete(attachment);
-                    }
+        ByteBuffer page = allocatePage();
+        long position = i * getPageSize();
+        channel.read(page, position, position, new CompletionHandler<>() {
+            @Override
+            public void completed(Integer result, Long attachment) {
+                if (result <= 0) {
+                    promise.completeExceptionally(new IllegalArgumentException(
+                            MessageFormat.format("Illegal file position {0}", position)));
+                } else if (page.remaining() > 0) {
+                    long newPosition = attachment + result;
+                    channel.read(page, newPosition, newPosition, this);
+                } else {
+                    promise.complete(page.flip());
                 }
+            }
 
-                @Override
-                public void failed(Throwable exc, ByteBuffer attachment) {
-                    promise.completeExceptionally(exc);
-                }
-            });
-        }
+            @Override
+            public void failed(Throwable exc, Long attachment) {
+                promise.completeExceptionally(exc);
+            }
+        });
         return promise;
     }
 
@@ -97,39 +80,24 @@ public class PageFile implements PageManager {
         assert 0 <= i && i < pageCount.get();
         page.rewind();
         assert page.remaining() == getPageSize();
-        return write(i * getPageSize(), page).thenApply(p -> p.rewind());
-    }
-
-    private CompletableFuture<ByteBuffer> write(long position, ByteBuffer page) {
-        long remaining = page.remaining();
-        assert (position + remaining)%getPageSize() == 0;
+        long position = i * getPageSize();
         CompletableFuture<ByteBuffer> promise = new CompletableFuture<>();
-        if (remaining == 0) {
-            promise.complete(page);
-        } else {
-            channel.write(page, position, page, new CompletionHandler<Integer, ByteBuffer>() {
-                @Override
-                public void completed(Integer result, ByteBuffer attachment) {
-                    if (attachment.remaining() > 0) {
-                        write(position + result, attachment).whenComplete((byteBuffer, throwable) -> {
-                            if (byteBuffer != null) {
-                                promise.complete(byteBuffer);
-                            } else {
-                                promise.completeExceptionally(throwable);
-                            }
-//                            return null;
-                        });
-                    } else {
-                        promise.complete(attachment);
-                    }
+        channel.write(page, position, position, new CompletionHandler<>() {
+            @Override
+            public void completed(Integer result, Long attachment) {
+                if (page.remaining() > 0) {
+                    long newPosition = attachment + result;
+                    channel.write(page, newPosition, newPosition, this);
+                } else {
+                    promise.complete(page.rewind());
                 }
+            }
 
-                @Override
-                public void failed(Throwable exc, ByteBuffer attachment) {
-                    promise.completeExceptionally(exc);
-                }
-            });
-        }
+            @Override
+            public void failed(Throwable exc, Long attachment) {
+                promise.completeExceptionally(exc);
+            }
+        });
         return promise;
     }
 
